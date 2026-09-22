@@ -51,8 +51,8 @@ else:
 # 3. STREAMLIT USER INTERFACE DESIGN
 # --------------------------------------------------------------------
 st.set_page_config(page_title="Practice Metrics Dashboard", layout="wide")
-st.title("🩺 Medical Practice Analytics & AI Copilot")
-st.subheader("May-July 2026 Financial & Productivity Monitoring")
+st.title("🩺 American Medical Group Practice Analytics")
+st.subheader("Executive Financial & Productivity Copilot")
 
 with st.sidebar:
     st.header("📥 Data Management")
