@@ -7,7 +7,6 @@ from google.genai import types
 # --------------------------------------------------------------------
 # 1. INITIALIZE GEMINI API Client
 # --------------------------------------------------------------------
-# Streamlit Cloud will securely inject your API key here from your Secrets manager
 client = genai.Client()
 
 # --------------------------------------------------------------------
@@ -16,7 +15,7 @@ client = genai.Client()
 MASTER_FILE = "master_medical_data.csv"
 
 def clean_and_parse_report(uploaded_file):
-    """Parses specific nested, grouped CPT Level CSV report format"""
+    """Parses specific nested, grouped CPT Level CSV report format perfectly"""
     # Read raw CSV, skipping metadata headers
     df = pd.read_csv(uploaded_file, skiprows=5)
     df.columns = df.columns.str.strip()
@@ -29,12 +28,17 @@ def clean_and_parse_report(uploaded_file):
     df['Appointment / Servicing Provider'] = df['Appointment / Servicing Provider'].ffill()
     df['Facility'] = df['Facility'].ffill()
     
-    # Clean and convert string numbers to real financial numbers
+    # Clean and convert string numbers to real financial numbers aggressively
     financial_cols = ['Billed Charge', 'Payer Charge', 'Self Charge', 'Payment', 
                       'Contractual Adjustment', 'Patient Count', 'Claim Count', 'Units', 'Change in A/R']
     for col in financial_cols:
         if col in df.columns:
-            df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+            # Force everything to clean string, strip out spaces, dollar signs, and commas
+            df[col] = df[col].astype(str).str.replace('$', '', regex=False)
+            df[col] = df[col].str.replace(',', '', regex=False)
+            df[col] = df[col].str.strip()
+            # Convert to float numbers, replacing unparseable errors with 0
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
             
     # Add a column to mark when this data was added
     df['Upload Month'] = pd.Timestamp.now().strftime('%B %Y')
@@ -43,6 +47,12 @@ def clean_and_parse_report(uploaded_file):
 # Load the historical master dataset if it exists
 if os.path.exists(MASTER_FILE):
     master_df = pd.read_csv(MASTER_FILE)
+    # Ensure master columns stay numeric after reload
+    financial_cols = ['Billed Charge', 'Payer Charge', 'Self Charge', 'Payment', 
+                      'Contractual Adjustment', 'Patient Count', 'Claim Count', 'Units', 'Change in A/R']
+    for col in financial_cols:
+        if col in master_df.columns:
+            master_df[col] = pd.to_numeric(master_df[col], errors='coerce').fillna(0)
 else:
     master_df = pd.DataFrame()
 
@@ -89,8 +99,8 @@ if master_df.empty:
 # 4. DATA VISUALIZATION DASHBOARD
 # --------------------------------------------------------------------
 # Top Level KPIs
-total_billed = master_df['Billed Charge'].sum()
-total_paid = master_df['Payment'].sum()
+total_billed = float(master_df['Billed Charge'].sum())
+total_paid = float(master_df['Payment'].sum())
 collection_rate = (total_paid / total_billed * 100) if total_billed > 0 else 0
 
 kpi1, kpi2, kpi3 = st.columns(3)
