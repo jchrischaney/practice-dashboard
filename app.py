@@ -141,17 +141,20 @@ st.subheader("🤖 Gemini Financial Copilot")
 
 tab1, tab2 = st.tabs(["📋 Monthly Executive Summary", "💬 Chat / Query Data"])
 
-# Generate separate strings to avoid inner string template structural syntax issues
 prov_matrix = master_df.groupby('Appointment / Servicing Provider')[['Billed Charge', 'Payment']].sum().reset_index().to_string(index=False)
 cpt_matrix = master_df.groupby('CPT Code')[['Units', 'Billed Charge', 'Payment']].sum().sort_values(by='Billed Charge', ascending=False).head(15).reset_index().to_string(index=False)
 
 with tab1:
     if st.button("Generate Monthly Executive Briefing"):
         with st.spinner("Gemini is auditing your practice data for revenue insights..."):
-            # Clean string building without nested block definitions
             ai_prompt = "You are a healthcare financial analyst. Analyze this medical performance breakdown:\n\nPROVIDERS:\n" + prov_matrix + "\n\nCPT CODES:\n" + cpt_matrix + "\n\nProvide a 3-part Executive Briefing:\n1. Financial Overview\n2. CPT Coding Shifts\n3. Actionable Leak Detection. Keep it concise using bullet points."
-            response = client.models.generate_content(model='gemini-2.0-flash', contents=ai_prompt)
-            st.markdown(response.text)
+            try:
+                # TARGETING UNIVERSAL PRODUCTION CHANNEL MODEL
+                response = client.models.generate_content(model='gemini-2.5-flash', contents=ai_prompt)
+                st.markdown(response.text)
+            except Exception as api_error:
+                st.error("⚠️ Google API Connection Blocked!")
+                st.info(f"Details from Google: {str(api_error)}")
 
 with tab2:
     full_chat_summary = master_df.groupby(['Appointment / Servicing Provider', 'CPT Code'])[['Billed Charge', 'Payment', 'Units']].sum().reset_index().to_string(index=False)
@@ -161,5 +164,8 @@ with tab2:
     if user_query:
         with st.spinner("Analyzing data table..."):
             chat_prompt = "You are a medical group assistant looking at this data:\n" + full_chat_summary + "\n\nQuestion: " + user_query
-            response = client.models.generate_content(model='gemini-2.5-flash', contents=chat_prompt)
-            st.write(response.text)
+            try:
+                response = client.models.generate_content(model='gemini-2.5-flash', contents=chat_prompt)
+                st.write(response.text)
+            except Exception as chat_error:
+                st.error("⚠️ Chat Engine Blocked!")
