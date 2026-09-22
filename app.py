@@ -141,15 +141,16 @@ st.subheader("🤖 Gemini Financial Copilot")
 
 tab1, tab2 = st.tabs(["📋 Monthly Executive Summary", "💬 Chat / Query Data"])
 
-prov_summary = master_df.groupby('Appointment / Servicing Provider')[['Billed Charge', 'Payment']].sum().reset_index().to_string(index=False)
-cpt_summary = master_df.groupby('CPT Code')[['Units', 'Billed Charge', 'Payment']].sum().sort_values(by='Billed Charge', ascending=False).head(15).reset_index().to_string(index=False)
+# Generate separate strings to avoid inner string template structural syntax issues
+prov_matrix = master_df.groupby('Appointment / Servicing Provider')[['Billed Charge', 'Payment']].sum().reset_index().to_string(index=False)
+cpt_matrix = master_df.groupby('CPT Code')[['Units', 'Billed Charge', 'Payment']].sum().sort_values(by='Billed Charge', ascending=False).head(15).reset_index().to_string(index=False)
 
 with tab1:
     if st.button("Generate Monthly Executive Briefing"):
         with st.spinner("Gemini is auditing your practice data for revenue insights..."):
-            prompt = f"You are a healthcare financial analyst. Analyze this medical practice performance breakdown:\n\nPROVIDERS:\n{prov_summary}\n\nTOP CPT CODES:\n{cpt_summary}\n\nProvide a 3-part Executive Briefing:\n1. Financial Overview\n2. CPT Coding Shifts\n3. Actionable Leak Detection. Keep it concise using bullet points."
-            # UPDATED TO ACTIVE PRODUCTION LAYER MODEL
-            response = client.models.generate_content(model='gemini-2.0-flash', contents=prompt)
+            # Clean string building without nested block definitions
+            ai_prompt = "You are a healthcare financial analyst. Analyze this medical performance breakdown:\n\nPROVIDERS:\n" + prov_matrix + "\n\nCPT CODES:\n" + cpt_matrix + "\n\nProvide a 3-part Executive Briefing:\n1. Financial Overview\n2. CPT Coding Shifts\n3. Actionable Leak Detection. Keep it concise using bullet points."
+            response = client.models.generate_content(model='gemini-2.0-flash', contents=ai_prompt)
             st.markdown(response.text)
 
 with tab2:
@@ -158,7 +159,7 @@ with tab2:
     user_query = st.text_input("Enter your natural language data question:")
     
     if user_query:
-        chat_prompt = f"You are a medical group assistant looking at this data:\n{full_chat_summary}\n\nQuestion: {user_query}"
-        # UPDATED TO ACTIVE PRODUCTION LAYER MODEL
-        response = client.models.generate_content(model='gemini-2.0-flash', contents=chat_prompt)
-        st.write(response.text)
+        with st.spinner("Analyzing data table..."):
+            chat_prompt = "You are a medical group assistant looking at this data:\n" + full_chat_summary + "\n\nQuestion: " + user_query
+            response = client.models.generate_content(model='gemini-2.5-flash', contents=chat_prompt)
+            st.write(response.text)
