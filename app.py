@@ -147,12 +147,9 @@ data_summary_for_ai = master_df.groupby(['Appointment / Servicing Provider', 'CP
 with tab1:
     if st.button("Generate Monthly Executive Briefing"):
         with st.spinner("Gemini is auditing your practice data for revenue insights..."):
-            prompt = f"You are a healthcare financial analyst. Analyze this medical practice financial summary aggregated by provider and CPT code:\n{data_summary_for_ai}\n\nProvide a 3-part Executive Briefing:\n1. **Financial Overview**: Highlight top producing providers and key collection bottlenecks.\n2. **CPT Coding Shifts**: Spot anomalies where high-complexity codes or medications (like J-codes) show poor reimbursement ratios.\n3. **Actionable Leak Detection**: Point out where the practice is leaving money on the table (high adjustments or low collections).\nKeep it strictly professional and highly concise using bullet points."
-            try:
-                response = client.models.generate_content(model='gemini-2.5-pro', contents=prompt)
-                st.markdown(response.text)
-            except Exception as e:
-                st.error(f"API Connection Error: {e}")
+            prompt = f"You are a healthcare financial analyst. Analyze this medical practice financial summary aggregated by provider and CPT code:\n{data_summary_for_ai}\n\nProvide a 3-part Executive Briefing:\n1. **Financial Overview**: Highlight top producing providers and key collection bottlenecks.\n2. **CPT Coding Shifts**: Spot anomalies where high-complexity codes or medications (like J-codes) show poor reimbursement ratios.\n3. **Actionable Leak Detection**: Point out where the practice is leaving money on the table (high adjustments or low collections)."
+            response = client.models.generate_content(model='gemini-2.5-pro', contents=prompt)
+            st.markdown(response.text)
 
 with tab2:
     st.write("Ask Gemini specific questions about your financial rows (e.g., 'Who billed the most for critical care code 99291?' or 'What is Dr. Yuhico's collection rate on J-codes?')")
@@ -161,4 +158,5 @@ with tab2:
     if user_query:
         with st.spinner("Analyzing data table..."):
             chat_prompt = f"You are an interactive business intelligence assistant for a medical group. You are looking at this parsed operational dataset:\n{data_summary_for_ai}\n\nAnswer the user's specific question clearly, citing values from the data above where appropriate.\nUser Question: {user_query}"
-            try:
+            response = client.models.generate_content(model='gemini-2.5-flash', contents=chat_prompt)
+            st.write(response.text)
