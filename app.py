@@ -79,7 +79,6 @@ with st.sidebar:
             
     st.divider()
     
-    # SAFE SIDEBAR CHEAT SHEET EXPANDER USING STANDARD STRINGS
     with st.expander("📋 CPT Code Quick-Reference Cheat Sheet", expanded=False):
         st.markdown("**E&M - CRITICAL CARE**")
         st.markdown("* **99291** : Critical Care (First 30–74 min)\n* **99292** : Critical Care (Each additional 30 min)")
@@ -148,7 +147,8 @@ with tab1:
     if st.button("Generate Monthly Executive Briefing"):
         with st.spinner("Gemini is auditing your practice data for revenue insights..."):
             prompt = f"You are a healthcare financial analyst. Analyze this medical practice financial summary aggregated by provider and CPT code:\n{data_summary_for_ai}\n\nProvide a 3-part Executive Briefing:\n1. **Financial Overview**: Highlight top producing providers and key collection bottlenecks.\n2. **CPT Coding Shifts**: Spot anomalies where high-complexity codes or medications (like J-codes) show poor reimbursement ratios.\n3. **Actionable Leak Detection**: Point out where the practice is leaving money on the table (high adjustments or low collections)."
-            response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+            # ROUTED TO ACTIVE PRODUCTION RUNTIME MODEL
+            response = client.models.generate_content(model='gemini-3.5-flash', contents=prompt)
             st.markdown(response.text)
 
 with tab2:
@@ -158,5 +158,6 @@ with tab2:
     if user_query:
         with st.spinner("Analyzing data table..."):
             chat_prompt = f"You are an interactive business intelligence assistant for a medical group. You are looking at this parsed operational dataset:\n{data_summary_for_ai}\n\nAnswer the user's specific question clearly, citing values from the data above where appropriate.\nUser Question: {user_query}"
-            response = client.models.generate_content(model='gemini-2.5-flash', contents=chat_prompt)
+            # ROUTED TO ACTIVE PRODUCTION RUNTIME MODEL
+            response = client.models.generate_content(model='gemini-3.5-flash', contents=chat_prompt)
             st.write(response.text)
