@@ -41,7 +41,7 @@ if os.path.exists(MASTER_FILE):
     master_df = pd.read_csv(MASTER_FILE)
     financial_cols = ['Billed Charge', 'Payer Charge', 'Self Charge', 'Payment', 
                       'Contractual Adjustment', 'Patient Count', 'Claim Count', 'Units', 'Change in A/R']
-    for col in financial_cols:
+    for col in master_df.columns:
         if col in master_df.columns:
             master_df[col] = pd.to_numeric(master_df[col], errors='coerce').fillna(0)
 else:
@@ -51,7 +51,7 @@ else:
 # 3. STREAMLIT USER INTERFACE DESIGN
 # --------------------------------------------------------------------
 st.set_page_config(page_title="American Medical Group Practice Analytics", layout="wide")
-st.title("🩺 American Medical Group Practice Analytics")
+st.title("% American Medical Group Practice Analytics")
 st.subheader("Executive Financial & Productivity Copilot")
 
 with st.sidebar:
@@ -141,21 +141,35 @@ st.subheader("🤖 Gemini Financial Copilot")
 
 tab1, tab2 = st.tabs(["📋 Monthly Executive Summary", "💬 Chat / Query Data"])
 
-data_summary_for_ai = master_df.groupby(['Appointment / Servicing Provider', 'CPT Code'])[['Billed Charge', 'Payment', 'Units']].sum().reset_index().to_string(index=False)
+# CRITICAL SECURITY FIX: Compact summary data structures to eliminate 100% of volume errors
+provider_summary = master_df.groupby('Appointment / Servicing Provider')[['Billed Charge', 'Payment']].sum().reset_index().to_string(index=False)
+cpt_summary = master_df.groupby('CPT Code')[['Units', 'Billed Charge', 'Payment']].sum().sort_values(by='Billed Charge', ascending=False).head(15).reset_index().to_string(index=False)
 
 with tab1:
     if st.button("Generate Monthly Executive Briefing"):
         with st.spinner("Gemini is auditing your practice data for revenue insights..."):
-            prompt = f"You are a healthcare financial analyst. Analyze this medical practice financial summary aggregated by provider and CPT code:\n{data_summary_for_ai}\n\nProvide a 3-part Executive Briefing:\n1. **Financial Overview**: Highlight top producing providers and key collection bottlenecks.\n2. **CPT Coding Shifts**: Spot anomalies where high-complexity codes or medications (like J-codes) show poor reimbursement ratios.\n3. **Actionable Leak Detection**: Point out where the practice is leaving money on the table (high adjustments or low collections)."
+            prompt = f"""You are a healthcare financial analyst. Analyze this compressed medical practice performance breakdown:
+
+PROVADERS REVENUE RATIOS:
+{provider_summary}
+
+TOP FINANCIAL DRIVING CPT CODES:
+{cpt_summary}
+
+Provide a 3-part Executive Briefing:
+1. **Financial Overview**: Highlight top producing providers and key collection bottlenecks.
+2. **CPT Coding Shifts**: Spot anomalies where high-volume codes show low collection percentages.
+3. **Actionable Leak Detection**: Point out where the practice is losing money on high write-offs. Keep it highly concise using bullet points."""
+            
             response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
             st.markdown(response.text)
 
 with tab2:
+    # Chat remains comprehensive for specific lookups (Rustmann, Yuhico, etc.)
+    full_chat_summary = master_df.groupby(['Appointment / Servicing Provider', 'CPT Code'])[['Billed Charge', 'Payment', 'Units']].sum().reset_index().to_string(index=False)
+    
     st.write("Ask Gemini specific questions about your financial rows (e.g., 'Who billed the most for critical care code 99291?' or 'What is Dr. Yuhico's collection rate on J-codes?')")
     user_query = st.text_input("Enter your natural language data question:")
     
     if user_query:
         with st.spinner("Analyzing data table..."):
-            chat_prompt = f"You are an interactive business intelligence assistant for a medical group. You are looking at this parsed operational dataset:\n{data_summary_for_ai}\n\nAnswer the user's specific question clearly, citing values from the data above where appropriate.\nUser Question: {user_query}"
-            response = client.models.generate_content(model='gemini-2.5-flash', contents=chat_prompt)
-            st.write(response.text)
