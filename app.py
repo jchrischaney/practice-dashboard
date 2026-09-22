@@ -149,8 +149,8 @@ with tab1:
         with st.spinner("Gemini is auditing your practice data for revenue insights..."):
             ai_prompt = "You are a healthcare financial analyst. Analyze this medical performance breakdown:\n\nPROVIDERS:\n" + prov_matrix + "\n\nCPT CODES:\n" + cpt_matrix + "\n\nProvide a 3-part Executive Briefing:\n1. Financial Overview\n2. CPT Coding Shifts\n3. Actionable Leak Detection. Keep it concise using bullet points."
             try:
-                # TARGETING UNIVERSAL PRODUCTION CHANNEL MODEL
-                response = client.models.generate_content(model='gemini-2.5-flash', contents=ai_prompt)
+                # UPDATED TO CHANNELS ALIGNED WITH LIVE SERVICE MODELS
+                response = client.models.generate_content(model='gemini-3.5-flash', contents=ai_prompt)
                 st.markdown(response.text)
             except Exception as api_error:
                 st.error("⚠️ Google API Connection Blocked!")
@@ -165,7 +165,6 @@ with tab2:
         with st.spinner("Analyzing data table..."):
             chat_prompt = "You are a medical group assistant looking at this data:\n" + full_chat_summary + "\n\nQuestion: " + user_query
             try:
-                response = client.models.generate_content(model='gemini-2.5-flash', contents=chat_prompt)
+                # UPDATED TO CHANNELS ALIGNED WITH LIVE SERVICE MODELS
+                response = client.models.generate_content(model='gemini-3.5-flash', contents=chat_prompt)
                 st.write(response.text)
-            except Exception as chat_error:
-                st.error("⚠️ Chat Engine Blocked!")
