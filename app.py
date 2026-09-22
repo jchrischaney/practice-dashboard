@@ -148,7 +148,7 @@ with tab1:
     if st.button("Generate Monthly Executive Briefing"):
         with st.spinner("Gemini is auditing your practice data for revenue insights..."):
             prompt = f"You are a healthcare financial analyst. Analyze this medical practice financial summary aggregated by provider and CPT code:\n{data_summary_for_ai}\n\nProvide a 3-part Executive Briefing:\n1. **Financial Overview**: Highlight top producing providers and key collection bottlenecks.\n2. **CPT Coding Shifts**: Spot anomalies where high-complexity codes or medications (like J-codes) show poor reimbursement ratios.\n3. **Actionable Leak Detection**: Point out where the practice is leaving money on the table (high adjustments or low collections)."
-            response = client.models.generate_content(model='gemini-2.5-pro', contents=prompt)
+            response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
             st.markdown(response.text)
 
 with tab2:
