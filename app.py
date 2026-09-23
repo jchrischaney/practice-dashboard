@@ -2,10 +2,13 @@ import streamlit as st
 import pandas as pd
 import os
 import google.genai as genai
+from streamlit_gsheets import GSheetsConnection
 
-# Initialize Gemini API Client
+# 1. INITIALIZE EXTERNAL CONNECTIONS
 client = genai.Client()
-MASTER_FILE = "master_medical_data.csv"
+
+# Initialize secure cloud-native connection to your Google Sheet
+conn = st.connection("gsheets", type=GSheetsConnection)
 
 def clean_and_parse_report(uploaded_file):
     df = pd.read_csv(uploaded_file, skiprows=5)
@@ -25,47 +28,53 @@ def clean_and_parse_report(uploaded_file):
     df['Upload Month'] = pd.Timestamp.now().strftime('%B %Y')
     return df
 
-if os.path.exists(MASTER_FILE) and os.path.getsize(MASTER_FILE) > 0:
-    master_df = pd.read_csv(MASTER_FILE)
+# Load data directly from Google Sheets securely using your hidden URL secret
+try:
+    master_df = conn.read(spreadsheet=st.secrets["gsheets_url"], ttl="0d")
+    # Clean up empty formatting lines if the Google Sheet was brand new
     if not master_df.empty:
+        master_df = master_df.dropna(subset=['CPT Code'])
         master_df['CPT Code'] = master_df['CPT Code'].astype(str).str.strip()
-        financial_cols = ['Billed Charge', 'Payer Charge', 'Self Charge', 'Payment', 
-                          'Contractual Adjustment', 'Patient Count', 'Claim Count', 'Units', 'Change in A/R']
-        for col in financial_cols:
-            if col in master_df.columns:
-                master_df[col] = pd.to_numeric(master_df[col], errors='coerce').fillna(0)
-else:
+except Exception:
     master_df = pd.DataFrame()
 
+# 3. STREAMLIT USER INTERFACE DESIGN
 st.set_page_config(page_title="American Medical Group Practice Analytics", layout="wide")
 st.title("🩺 American Medical Group Practice Analytics")
 st.subheader("Executive Financial & Productivity Copilot")
 
 with st.sidebar:
-    st.header("📥 Data Management")
+    st.header("📥 Cloud Data Management")
     uploaded_file = st.file_uploader("Upload Monthly CPT Analysis Report (CSV)", type=["csv"])
-    if uploaded_file is not None and st.button("Process & Append to Master"):
+    
+    if uploaded_file is not None and st.button("Process & Append to Google Sheet"):
         new_data = clean_and_parse_report(uploaded_file)
-        master_df = new_data if master_df.empty else pd.concat([master_df, new_data], ignore_index=True)
-        master_df.to_csv(MASTER_FILE, index=False)
-        st.success("Successfully processed database!")
+        
+        if master_df.empty:
+            master_df = new_data
+        else:
+            master_df = pd.concat([master_df, new_data], ignore_index=True)
+            
+        # Securely overwrite the live cloud Google Sheet with the new combined master timeline
+        conn.update(spreadsheet=st.secrets["gsheets_url"], data=master_df)
+        st.success("Successfully pushed data straight to your secure Google Drive!")
         st.rerun()
-    if not master_df.empty and st.button("Clear Master Database"):
-        if os.path.exists(MASTER_FILE):
-            os.remove(MASTER_FILE)
-        st.warning("Database cleared.")
+        
+    if not master_df.empty and st.button("Wipe Cloud Sheet Database"):
+        empty_df = pd.DataFrame(columns=master_df.columns)
+        conn.update(spreadsheet=st.secrets["gsheets_url"], data=empty_df)
+        st.warning("Google Sheet database wiped clean.")
         st.rerun()
+        
     st.divider()
     with st.expander("📋 CPT Code Quick-Reference Cheat Sheet", expanded=False):
         st.markdown("**E&M - CRITICAL CARE**\n* **99291** : Critical Care (30–74 min)\n* **99292** : Critical Care (Addl 30 min)\n\n**E&M - CLINIC VISITS**\n* **99202-99205** : New Patient Clinic\n* **99212-99215** : Established Patient Clinic\n\n**DIAGNOSTICS & PFT LAB**\n* **94010-94799** : Complete Pulmonary Function Panel")
 
 if master_df.empty:
-    st.info("Welcome! Please upload an initial spreadsheet in the sidebar to populate your dashboard metrics.")
+    st.info("Welcome! Your secure cloud database is currently blank. Please upload a spreadsheet report in the sidebar to populate your analytics metrics.")
     st.stop()
 
-# --------------------------------------------------------------------
-# 4. DATA VISUALIZATION DASHBOARD (SEGREGATED SECTIONS)
-# --------------------------------------------------------------------
+# 4. DATA VISUALIZATION DASHBOARD
 total_billed = float(master_df['Billed Charge'].sum())
 total_paid = float(master_df['Payment'].sum())
 collection_rate = (total_paid / total_billed * 100) if total_billed > 0 else 0
@@ -129,7 +138,6 @@ pft_matrix = pft_df.groupby('Appointment / Servicing Provider')[['Billed Charge'
 if st.button("Generate Segmented Executive Briefing"):
     ai_prompt = "You are a healthcare analyst evaluating a pulmonary group practice breakdown:\n\nGLOBAL TOTALS:\n" + prov_matrix + "\n\nCLINIC VISITS:\n" + outpatient_matrix + "\n\nINFUSIONS:\n" + jcode_matrix + "\n\nPFT LABS:\n" + pft_matrix + "\n\nSummarize clinic vs inpatient profiles, infusion/PFT metrics leakage, and top outlier leaks."
     try:
-        # POINTED TO CURRENT REMOTELY AVAILABLE INFRASTRUCTURE MODEL STRINGS
         response = client.models.generate_content(model='gemini-3.6-flash', contents=ai_prompt)
         st.markdown(response.text)
     except Exception as api_error:
@@ -141,7 +149,6 @@ if user_query:
     full_chat_summary = master_df.groupby(['Appointment / Servicing Provider', 'CPT Code'])[['Billed Charge', 'Payment', 'Units']].sum().reset_index().to_string(index=False)
     chat_prompt = "You are a medical group assistant looking at this data:\n" + full_chat_summary + "\n\nQuestion: " + user_query
     try:
-        # POINTED TO CURRENT REMOTELY AVAILABLE INFRASTRUCTURE MODEL STRINGS
         response = client.models.generate_content(model='gemini-3.6-flash', contents=chat_prompt)
         st.write(response.text)
     except Exception as chat_error:
