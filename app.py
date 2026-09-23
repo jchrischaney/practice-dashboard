@@ -179,8 +179,12 @@ with tab1:
     if st.button("Generate Segmented Executive Briefing"):
         with st.spinner("Gemini is auditing your specialized service lines..."):
             ai_prompt = "You are a healthcare analyst evaluating a pulmonary group practice breakdown:\n\nGLOBAL TOTALS:\n" + prov_matrix + "\n\nCLINIC VISITS:\n" + outpatient_matrix + "\n\nINFUSIONS:\n" + jcode_matrix + "\n\nPFT LABS:\n" + pft_matrix + "\n\nSummarize clinical clinic vs inpatient profiles, infusion/PFT metrics leakage, and top outlier leaks."
-            response = client.models.generate_content(model='gemini-2.0-flash', contents=ai_prompt)
-            st.markdown(response.text)
+            try:
+                response = client.models.generate_content(model='gemini-2.5-flash', contents=ai_prompt)
+                st.markdown(response.text)
+            except Exception as api_error:
+                st.error("⚠️ AI Module Alert")
+                st.info(f"Details from Google: {str(api_error)}")
 
 with tab2:
     full_chat_summary = master_df.groupby(['Appointment / Servicing Provider', 'CPT Code'])[['Billed Charge', 'Payment', 'Units']].sum().reset_index().to_string(index=False)
@@ -189,6 +193,3 @@ with tab2:
     
     if user_query:
         with st.spinner("Analyzing data table..."):
-            chat_prompt = "You are a medical group assistant looking at this data:\n" + full_chat_summary + "\n\nQuestion: " + user_query
-            response = client.models.generate_content(model='gemini-2.0-flash', contents=chat_prompt)
-            st.write(response.text)
