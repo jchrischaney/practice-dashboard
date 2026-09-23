@@ -129,11 +129,11 @@ pft_matrix = pft_df.groupby('Appointment / Servicing Provider')[['Billed Charge'
 if st.button("Generate Segmented Executive Briefing"):
     ai_prompt = "You are a healthcare analyst evaluating a pulmonary group practice breakdown:\n\nGLOBAL TOTALS:\n" + prov_matrix + "\n\nCLINIC VISITS:\n" + outpatient_matrix + "\n\nINFUSIONS:\n" + jcode_matrix + "\n\nPFT LABS:\n" + pft_matrix + "\n\nSummarize clinic vs inpatient profiles, infusion/PFT metrics leakage, and top outlier leaks."
     try:
-        # ROUTED TO HIGH-VOLUME PRODUCTION LAYER MODEL
-        response = client.models.generate_content(model='gemini-2.5-flash', contents=ai_prompt)
+        # CONFIGURED ACCORDING TO LIVE SERVER IDENTIFIER GUIDELINES
+        response = client.models.generate_content(model='gemini-2.0-flash', contents=ai_prompt)
         st.markdown(response.text)
     except Exception as api_error:
-        st.error(f"⚠️ AI Server Error: {str(api_error)}")
+        st.error(f"⚠️ AI Alert: {str(api_error)}")
 
 st.write("Ask Gemini specific questions about your metrics:")
 user_query = st.text_input("Enter your natural language data question:")
@@ -141,8 +141,8 @@ if user_query:
     full_chat_summary = master_df.groupby(['Appointment / Servicing Provider', 'CPT Code'])[['Billed Charge', 'Payment', 'Units']].sum().reset_index().to_string(index=False)
     chat_prompt = "You are a medical group assistant looking at this data:\n" + full_chat_summary + "\n\nQuestion: " + user_query
     try:
-        # ROUTED TO HIGH-VOLUME PRODUCTION LAYER MODEL
-        response = client.models.generate_content(model='gemini-2.5-flash', contents=chat_prompt)
+        # CONFIGURED ACCORDING TO LIVE SERVICE CHANNELS
+        response = client.models.generate_content(model='gemini-2.0-flash', contents=chat_prompt)
         st.write(response.text)
     except Exception as chat_error:
-        st.error(f"⚠️ Chat Server Error: {str(chat_error)}")
+        st.error(f"⚠️ Chat Alert: {str(chat_error)}")
