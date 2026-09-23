@@ -25,7 +25,6 @@ def clean_and_parse_report(uploaded_file):
     df['Appointment / Servicing Provider'] = df['Appointment / Servicing Provider'].ffill()
     df['Facility'] = df['Facility'].ffill()
     
-    # Standardize CPT code column to strings without hidden spaces
     df['CPT Code'] = df['CPT Code'].astype(str).str.strip()
     
     financial_cols = ['Billed Charge', 'Payer Charge', 'Self Charge', 'Payment', 
@@ -42,7 +41,6 @@ def clean_and_parse_report(uploaded_file):
 
 if os.path.exists(MASTER_FILE):
     master_df = pd.read_csv(MASTER_FILE)
-    # Ensure CPT code is read as string consistently
     master_df['CPT Code'] = master_df['CPT Code'].astype(str).str.strip()
     financial_cols = ['Billed Charge', 'Payer Charge', 'Self Charge', 'Payment', 
                       'Contractual Adjustment', 'Patient Count', 'Claim Count', 'Units', 'Change in A/R']
@@ -101,7 +99,6 @@ if master_df.empty:
 # --------------------------------------------------------------------
 # 4. DATA VISUALIZATION DASHBOARD (SEGREGATED SECTIONS)
 # --------------------------------------------------------------------
-# Global Practice KPIs
 total_billed = float(master_df['Billed Charge'].sum())
 total_paid = float(master_df['Payment'].sum())
 collection_rate = (total_paid / total_billed * 100) if total_billed > 0 else 0
@@ -113,11 +110,9 @@ kpi3.metric("Gross Collection Rate", f"{collection_rate:.1f}%")
 
 st.divider()
 
-# --- SECTION A: INPATIENT VS OUTPATIENT SEGREGATION ---
 st.subheader("🏢 Core Service Line Splits (Inpatient vs. Outpatient Clinic)")
 line_col1, line_col2 = st.columns(2)
 
-# Defined Outpatient Codes List
 outpatient_codes = ['99202', '99203', '99204', '99205', '99212', '99213', '99214', '99215']
 
 with line_col1:
@@ -131,15 +126,12 @@ with line_col1:
 
 with line_col2:
     st.markdown("**🏥 Inpatient Hospital & Critical Care Numbers by Provider**")
-    # Inpatient is defined as rows that are NOT outpatient codes, NOT J-codes, and NOT PFT codes
     inpatient_df = master_df[
         (~master_df['CPT Code'].isin(outpatient_codes)) & 
         (~master_df['CPT Code'].str.startswith('J', na=False)) & 
         (~master_df['CPT Code'].str.startswith('Q', na=False))
     ]
-    # Filter numeric PFT ranges out of inpatient mapping
     inpatient_df = inpatient_df[~inpatient_df['CPT Code'].str.match(r'^94[0-7]\d\d', na=False)]
-    
     if not inpatient_df.empty:
         inpatient_provider = inpatient_df.groupby('Appointment / Servicing Provider')[['Billed Charge', 'Payment']].sum()
         st.bar_chart(inpatient_provider)
@@ -148,13 +140,11 @@ with line_col2:
 
 st.divider()
 
-# --- SECTION B: MEDICATION INFUSIONS & PFT LABS ---
 st.subheader("🔬 Specialized Service Lines (IV Infusions & PFT Lab Tracking)")
 spec_col1, spec_col2 = st.columns(2)
 
 with spec_col1:
     st.markdown("**🧪 IV Infusions & Biologics (J-Codes) by Provider**")
-    # Filters rows where CPT starts with J
     j_code_df = master_df[master_df['CPT Code'].str.startswith('J', na=False)]
     if not j_code_df.empty:
         j_provider = j_code_df.groupby('Appointment / Servicing Provider')[['Billed Charge', 'Payment']].sum()
@@ -164,10 +154,8 @@ with spec_col1:
 
 with spec_col2:
     st.markdown("**🫁 Pulmonary Function Testing (PFT 94010–94799) by Provider**")
-    # Filters rows where CPT Code is numerically inside the standard 94010-94799 PFT range
     master_df['CPT_Numeric'] = pd.to_numeric(master_df['CPT Code'], errors='coerce')
     pft_df = master_df[(master_df['CPT_Numeric'] >= 94010) & (master_df['CPT_Numeric'] <= 94799)]
-    
     if not pft_df.empty:
         pft_provider = pft_df.groupby('Appointment / Servicing Provider')[['Billed Charge', 'Payment']].sum()
         st.bar_chart(pft_provider)
@@ -182,28 +170,25 @@ st.divider()
 st.subheader("🤖 Gemini Financial Copilot")
 tab1, tab2 = st.tabs(["📋 Segregated Executive Summary", "💬 Chat / Query Data"])
 
-# Create safe matrices summaries to feed to the AI context seamlessly
-prov_summary = master_df.groupby('Appointment / Servicing Provider')[['Billed Charge', 'Payment']].sum().reset_index().to_string(index=False)
-outpatient_summary = outpatient_df.groupby('Appointment / Servicing Provider')[['Billed Charge', 'Payment']].sum().reset_index().to_string(index=False) if not outpatient_df.empty else "No Outpatient Data"
-jcode_summary = j_code_df.groupby('Appointment / Servicing Provider')[['Billed Charge', 'Payment']].sum().reset_index().to_string(index=False) if not j_code_df.empty else "No J-Code Data"
-pft_summary = pft_df.groupby('Appointment / Servicing Provider')[['Billed Charge', 'Payment']].sum().reset_index().to_string(index=False) if not pft_df.empty else "No PFT Data"
+prov_matrix = master_df.groupby('Appointment / Servicing Provider')[['Billed Charge', 'Payment']].sum().reset_index().to_string(index=False)
+outpatient_matrix = outpatient_df.groupby('Appointment / Servicing Provider')[['Billed Charge', 'Payment']].sum().reset_index().to_string(index=False) if not outpatient_df.empty else "No Outpatient Data"
+jcode_matrix = j_code_df.groupby('Appointment / Servicing Provider')[['Billed Charge', 'Payment']].sum().reset_index().to_string(index=False) if not j_code_df.empty else "No J-Code Data"
+pft_matrix = pft_df.groupby('Appointment / Servicing Provider')[['Billed Charge', 'Payment']].sum().reset_index().to_string(index=False) if not pft_df.empty else "No PFT Data"
 
 with tab1:
     if st.button("Generate Segmented Executive Briefing"):
         with st.spinner("Gemini is auditing your specialized service lines..."):
-            ai_prompt = f"""You are an expert healthcare financial analyst. Analyze this multi-segment performance breakdown for a Pulmonary practice:
+            ai_prompt = "You are a healthcare analyst evaluating a pulmonary group practice breakdown:\n\nGLOBAL TOTALS:\n" + prov_matrix + "\n\nCLINIC VISITS:\n" + outpatient_matrix + "\n\nINFUSIONS:\n" + jcode_matrix + "\n\nPFT LABS:\n" + pft_matrix + "\n\nSummarize clinical clinic vs inpatient profiles, infusion/PFT metrics leakage, and top outlier leaks."
+            response = client.models.generate_content(model='gemini-2.0-flash', contents=ai_prompt)
+            st.markdown(response.text)
 
-GLOBAL PROVIDER TOTALS:
-{prov_summary}
-
-OUTPATIENT CLINIC VISITS EXCLUSIVELY:
-{outpatient_summary}
-
-MEDICATION INFUSIONS (J-CODES):
-{jcode_summary}
-
-PULMONARY FUNCTION TESTING (PFT LAB):
-{pft_summary}
-
-Provide a crisp 3-part Executive Briefing:
-1. **Clinic vs Inpatient Footprint**: Compare who dominates outpatient clinics vs inpatient hospital revenue.
+with tab2:
+    full_chat_summary = master_df.groupby(['Appointment / Servicing Provider', 'CPT Code'])[['Billed Charge', 'Payment', 'Units']].sum().reset_index().to_string(index=False)
+    st.write("Ask Gemini specific questions about your metrics:")
+    user_query = st.text_input("Enter your natural language data question:")
+    
+    if user_query:
+        with st.spinner("Analyzing data table..."):
+            chat_prompt = "You are a medical group assistant looking at this data:\n" + full_chat_summary + "\n\nQuestion: " + user_query
+            response = client.models.generate_content(model='gemini-2.0-flash', contents=chat_prompt)
+            st.write(response.text)
