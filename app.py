@@ -6,8 +6,6 @@ from streamlit_gsheets import GSheetsConnection
 
 # 1. INITIALIZE EXTERNAL CONNECTIONS
 client = genai.Client()
-
-# Initialize secure cloud-native connection to your Google Sheet
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def clean_and_parse_report(uploaded_file):
@@ -31,7 +29,6 @@ def clean_and_parse_report(uploaded_file):
 # Load data directly from Google Sheets securely using your hidden URL secret
 try:
     master_df = conn.read(spreadsheet=st.secrets["gsheets_url"], ttl="0d")
-    # Clean up empty formatting lines if the Google Sheet was brand new
     if not master_df.empty:
         master_df = master_df.dropna(subset=['CPT Code'])
         master_df['CPT Code'] = master_df['CPT Code'].astype(str).str.strip()
@@ -55,14 +52,14 @@ with st.sidebar:
         else:
             master_df = pd.concat([master_df, new_data], ignore_index=True)
             
-        # Securely overwrite the live cloud Google Sheet with the new combined master timeline
-        conn.update(spreadsheet=st.secrets["gsheets_url"], data=master_df)
+        # FIX: Swapped to conn.create to safely initialize and map to blank/active sheets alike
+        conn.create(spreadsheet=st.secrets["gsheets_url"], data=master_df)
         st.success("Successfully pushed data straight to your secure Google Drive!")
         st.rerun()
         
     if not master_df.empty and st.button("Wipe Cloud Sheet Database"):
         empty_df = pd.DataFrame(columns=master_df.columns)
-        conn.update(spreadsheet=st.secrets["gsheets_url"], data=empty_df)
+        conn.create(spreadsheet=st.secrets["gsheets_url"], data=empty_df)
         st.warning("Google Sheet database wiped clean.")
         st.rerun()
         
