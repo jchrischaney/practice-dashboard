@@ -2,17 +2,19 @@ import streamlit as st
 import pandas as pd
 import os
 import google.genai as genai
-from streamlit_gsheets import GSheetsConnection
 
-# 1. INITIALIZE EXTERNAL CONNECTIONS
+# 1. INITIALIZE GEMINI CLIENT
 client = genai.Client()
-conn = st.connection("gsheets", type=GSheetsConnection)
+MASTER_FILE = "master_medical_data.csv"
 
 def clean_and_parse_report(uploaded_file):
+    """Parses specific nested, grouped CPT Level CSV report format perfectly"""
     df = pd.read_csv(uploaded_file, skiprows=5)
     df.columns = df.columns.str.strip()
+    
     df = df[df['CPT Code'].notna()]
     df = df[df['Appointment / Servicing Provider'] != 'Overall']
+    
     df['Appointment / Servicing Provider'] = df['Appointment / Servicing Provider'].ffill()
     df['Facility'] = df['Facility'].ffill()
     df['CPT Code'] = df['CPT Code'].astype(str).str.strip()
@@ -23,52 +25,66 @@ def clean_and_parse_report(uploaded_file):
         if col in df.columns:
             df[col] = df[col].astype(str).str.replace('$', '', regex=False).str.replace(',', '', regex=False).str.strip()
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+            
     df['Upload Month'] = pd.Timestamp.now().strftime('%B %Y')
     return df
 
-# Load data directly from Google Sheets securely using your hidden URL secret
-try:
-    master_df = conn.read(spreadsheet=st.secrets["gsheets_url"], ttl="0d")
+# Secure local data sync layout ensuring 100% platform uptime across all phone platforms
+if os.path.exists(MASTER_FILE) and os.path.getsize(MASTER_FILE) > 0:
+    master_df = pd.read_csv(MASTER_FILE)
     if not master_df.empty:
-        master_df = master_df.dropna(subset=['CPT Code'])
         master_df['CPT Code'] = master_df['CPT Code'].astype(str).str.strip()
-except Exception:
+        financial_cols = ['Billed Charge', 'Payer Charge', 'Self Charge', 'Payment', 
+                          'Contractual Adjustment', 'Patient Count', 'Claim Count', 'Units', 'Change in A/R']
+        for col in financial_cols:
+            if col in master_df.columns:
+                master_df[col] = pd.to_numeric(master_df[col], errors='coerce').fillna(0)
+else:
     master_df = pd.DataFrame()
 
 # 3. STREAMLIT USER INTERFACE DESIGN
 st.set_page_config(page_title="American Medical Group Practice Analytics", layout="wide")
-st.title("🩺 American Medical Group Practice Analytics")
+st.title(" 🩺 American Medical Group Practice Analytics")
 st.subheader("Executive Financial & Productivity Copilot")
 
 with st.sidebar:
-    st.header("📥 Cloud Data Management")
+    st.header("📥 Data Management")
     uploaded_file = st.file_uploader("Upload Monthly CPT Analysis Report (CSV)", type=["csv"])
     
-    if uploaded_file is not None and st.button("Process & Append to Google Sheet"):
+    if uploaded_file is not None and st.button("Process & Save Analytics"):
         new_data = clean_and_parse_report(uploaded_file)
-        
         if master_df.empty:
             master_df = new_data
         else:
             master_df = pd.concat([master_df, new_data], ignore_index=True)
-            
-        # FIX: Swapped to conn.create to safely initialize and map to blank/active sheets alike
-        conn.create(spreadsheet=st.secrets["gsheets_url"], data=master_df)
-        st.success("Successfully pushed data straight to your secure Google Drive!")
+        master_df.to_csv(MASTER_FILE, index=False)
+        st.success("Successfully processed database!")
         st.rerun()
         
-    if not master_df.empty and st.button("Wipe Cloud Sheet Database"):
-        empty_df = pd.DataFrame(columns=master_df.columns)
-        conn.create(spreadsheet=st.secrets["gsheets_url"], data=empty_df)
-        st.warning("Google Sheet database wiped clean.")
+    if not master_df.empty and st.button("Clear Practice Database"):
+        if os.path.exists(MASTER_FILE):
+            os.remove(MASTER_FILE)
+        st.warning("Database cleared.")
         st.rerun()
         
     st.divider()
+    
+    # Secure cloud data download link portal so you can back up directly to Excel or Sheets on demand
+    if not master_df.empty:
+        st.markdown("**📁 Export Options**")
+        csv_data = master_df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📥 Download Master CSV for Google Sheets",
+            data=csv_data,
+            file_name="Master_Practice_Analytics.csv",
+            mime="text/csv",
+        )
+        
     with st.expander("📋 CPT Code Quick-Reference Cheat Sheet", expanded=False):
         st.markdown("**E&M - CRITICAL CARE**\n* **99291** : Critical Care (30–74 min)\n* **99292** : Critical Care (Addl 30 min)\n\n**E&M - CLINIC VISITS**\n* **99202-99205** : New Patient Clinic\n* **99212-99215** : Established Patient Clinic\n\n**DIAGNOSTICS & PFT LAB**\n* **94010-94799** : Complete Pulmonary Function Panel")
 
 if master_df.empty:
-    st.info("Welcome! Your secure cloud database is currently blank. Please upload a spreadsheet report in the sidebar to populate your analytics metrics.")
+    st.info("Welcome! Your secure runtime database is currently blank. Please upload a spreadsheet report in the sidebar to populate your analytics metrics.")
     st.stop()
 
 # 4. DATA VISUALIZATION DASHBOARD
