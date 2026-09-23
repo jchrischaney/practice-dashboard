@@ -25,14 +25,15 @@ def clean_and_parse_report(uploaded_file):
     df['Upload Month'] = pd.Timestamp.now().strftime('%B %Y')
     return df
 
-if os.path.exists(MASTER_FILE):
+if os.path.exists(MASTER_FILE) and os.path.getsize(MASTER_FILE) > 0:
     master_df = pd.read_csv(MASTER_FILE)
-    master_df['CPT Code'] = master_df['CPT Code'].astype(str).str.strip()
-    financial_cols = ['Billed Charge', 'Payer Charge', 'Self Charge', 'Payment', 
-                      'Contractual Adjustment', 'Patient Count', 'Claim Count', 'Units', 'Change in A/R']
-    for col in master_df.columns:
-        if col in master_df.columns:
-            master_df[col] = pd.to_numeric(master_df[col], errors='coerce').fillna(0)
+    if not master_df.empty:
+        master_df['CPT Code'] = master_df['CPT Code'].astype(str).str.strip()
+        financial_cols = ['Billed Charge', 'Payer Charge', 'Self Charge', 'Payment', 
+                          'Contractual Adjustment', 'Patient Count', 'Claim Count', 'Units', 'Change in A/R']
+        for col in financial_cols:
+            if col in master_df.columns:
+                master_df[col] = pd.to_numeric(master_df[col], errors='coerce').fillna(0)
 else:
     master_df = pd.DataFrame()
 
@@ -62,6 +63,9 @@ if master_df.empty:
     st.info("Welcome! Please upload an initial spreadsheet in the sidebar to populate your dashboard metrics.")
     st.stop()
 
+# --------------------------------------------------------------------
+# 4. DATA VISUALIZATION DASHBOARD (SEGREGATED SECTIONS)
+# --------------------------------------------------------------------
 total_billed = float(master_df['Billed Charge'].sum())
 total_paid = float(master_df['Payment'].sum())
 collection_rate = (total_paid / total_billed * 100) if total_billed > 0 else 0
@@ -125,16 +129,14 @@ pft_matrix = pft_df.groupby('Appointment / Servicing Provider')[['Billed Charge'
 if st.button("Generate Segmented Executive Briefing"):
     ai_prompt = "You are a healthcare analyst evaluating a pulmonary group practice breakdown:\n\nGLOBAL TOTALS:\n" + prov_matrix + "\n\nCLINIC VISITS:\n" + outpatient_matrix + "\n\nINFUSIONS:\n" + jcode_matrix + "\n\nPFT LABS:\n" + pft_matrix + "\n\nSummarize clinic vs inpatient profiles, infusion/PFT metrics leakage, and top outlier leaks."
     try:
-        # Route 1: Try your standard assigned high-end model configuration
-        response = client.models.generate_content(model='gemini-3.6-flash', contents=ai_prompt)
+        response = client.models.generate_content(model='gemini-2.0-flash', contents=ai_prompt)
         st.markdown(response.text)
     except Exception as primary_error:
-        # Route 2: AUTOMATIC FALLBACK SAFETY NET (Routes instantly to stable workhorse model if Route 1 is overloaded)
         try:
             response = client.models.generate_content(model='gemini-1.5-flash', contents=ai_prompt)
             st.markdown(response.text)
         except Exception as fallback_error:
-            st.error(f"⚠️ Google Server Capacity Limit Hit. Please tap again in a moment. (Primary Error: {str(primary_error)} | Backup Error: {str(fallback_error)})")
+            st.error(f"⚠️ Google Server Capacity Limit Hit. Please tap again in a moment.")
 
 st.write("Ask Gemini specific questions about your metrics:")
 user_query = st.text_input("Enter your natural language data question:")
@@ -142,11 +144,9 @@ if user_query:
     full_chat_summary = master_df.groupby(['Appointment / Servicing Provider', 'CPT Code'])[['Billed Charge', 'Payment', 'Units']].sum().reset_index().to_string(index=False)
     chat_prompt = "You are a medical group assistant looking at this data:\n" + full_chat_summary + "\n\nQuestion: " + user_query
     try:
-        # Route 1 for Chat
-        response = client.models.generate_content(model='gemini-3.6-flash', contents=chat_prompt)
+        response = client.models.generate_content(model='gemini-2.0-flash', contents=chat_prompt)
         st.write(response.text)
     except Exception as chat_primary_error:
-        # Route 2 Fallback for Chat
         try:
             response = client.models.generate_content(model='gemini-1.5-flash', contents=chat_prompt)
             st.write(response.text)
