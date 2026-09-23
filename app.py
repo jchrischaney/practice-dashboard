@@ -30,7 +30,7 @@ if os.path.exists(MASTER_FILE):
     master_df['CPT Code'] = master_df['CPT Code'].astype(str).str.strip()
     financial_cols = ['Billed Charge', 'Payer Charge', 'Self Charge', 'Payment', 
                       'Contractual Adjustment', 'Patient Count', 'Claim Count', 'Units', 'Change in A/R']
-    for col in financial_cols:
+    for col in master_df.columns:
         if col in master_df.columns:
             master_df[col] = pd.to_numeric(master_df[col], errors='coerce').fillna(0)
 else:
@@ -123,13 +123,18 @@ jcode_matrix = j_code_df.groupby('Appointment / Servicing Provider')[['Billed Ch
 pft_matrix = pft_df.groupby('Appointment / Servicing Provider')[['Billed Charge', 'Payment']].sum().reset_index().to_string(index=False) if not pft_df.empty else "No PFT Data"
 
 if st.button("Generate Segmented Executive Briefing"):
-    ai_prompt = "You are a healthcare analyst evaluating a pulmonary group practice breakdown:\n\nGLOBAL TOTALS:\n" + prov_matrix + "\n\nCLINIC VISITS:\n" + outpatient_matrix + "\n\nINFUSIONS:\n" + jcode_matrix + "\n\nPFT LABS:\n" + pft_matrix + "\n\nSummarize clinical clinic vs inpatient profiles, infusion/PFT metrics leakage, and top outlier leaks."
+    ai_prompt = "You are a healthcare analyst evaluating a pulmonary group practice breakdown:\n\nGLOBAL TOTALS:\n" + prov_matrix + "\n\nCLINIC VISITS:\n" + outpatient_matrix + "\n\nINFUSIONS:\n" + jcode_matrix + "\n\nPFT LABS:\n" + pft_matrix + "\n\nSummarize clinic vs inpatient profiles, infusion/PFT metrics leakage, and top outlier leaks."
     try:
-        # CONFIGURED ACCORDING TO LIVE SERVER IDENTIFIER GUIDELINES
+        # Route 1: Try your standard assigned high-end model configuration
         response = client.models.generate_content(model='gemini-3.6-flash', contents=ai_prompt)
         st.markdown(response.text)
-    except Exception as api_error:
-        st.error(f"⚠️ AI Alert: {str(api_error)}")
+    except Exception as primary_error:
+        # Route 2: AUTOMATIC FALLBACK SAFETY NET (Routes instantly to stable workhorse model if Route 1 is overloaded)
+        try:
+            response = client.models.generate_content(model='gemini-1.5-flash', contents=ai_prompt)
+            st.markdown(response.text)
+        except Exception as fallback_error:
+            st.error(f"⚠️ Google Server Capacity Limit Hit. Please tap again in a moment. (Primary Error: {str(primary_error)} | Backup Error: {str(fallback_error)})")
 
 st.write("Ask Gemini specific questions about your metrics:")
 user_query = st.text_input("Enter your natural language data question:")
@@ -137,8 +142,13 @@ if user_query:
     full_chat_summary = master_df.groupby(['Appointment / Servicing Provider', 'CPT Code'])[['Billed Charge', 'Payment', 'Units']].sum().reset_index().to_string(index=False)
     chat_prompt = "You are a medical group assistant looking at this data:\n" + full_chat_summary + "\n\nQuestion: " + user_query
     try:
-        # CONFIGURED ACCORDING TO LIVE SERVICE CHANNELS
+        # Route 1 for Chat
         response = client.models.generate_content(model='gemini-3.6-flash', contents=chat_prompt)
         st.write(response.text)
-    except Exception as chat_error:
-        st.error(f"⚠️ Chat Alert: {str(chat_error)}")
+    except Exception as chat_primary_error:
+        # Route 2 Fallback for Chat
+        try:
+            response = client.models.generate_content(model='gemini-1.5-flash', contents=chat_prompt)
+            st.write(response.text)
+        except Exception as chat_fallback_error:
+            st.error("⚠️ Chat traffic limit hit. Please submit your question again.")
