@@ -44,7 +44,7 @@ else:
 
 # 3. STREAMLIT USER INTERFACE DESIGN
 st.set_page_config(page_title="American Medical Group Practice Analytics", layout="wide")
-st.title(" 🩺 American Medical Group Practice Analytics")
+st.title(" 🩺 American Medical Group Pulmonary Analytics")
 st.subheader("Executive Financial & Productivity Copilot")
 
 with st.sidebar:
