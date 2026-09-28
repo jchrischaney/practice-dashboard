@@ -43,7 +43,7 @@ else:
     master_df = pd.DataFrame()
 
 # 3. STREAMLIT USER INTERFACE DESIGN
-st.set_page_config(page_title="American Medical Group Practice Analytics", layout="wide")
+st.set_page_config(page_title="American Medical Group Pulmonary Practice Analytics", layout="wide")
 st.title(" 🩺 American Medical Group Practice Analytics")
 st.subheader("Executive Financial & Productivity Copilot")
 
