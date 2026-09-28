@@ -3,7 +3,7 @@ import pandas as pd
 import os
 import google.genai as genai
 
-# 1. INITIALIZE GEMINI CLIENT & FILE CONSTANTS
+# 1. INITIALIZE GEMINI CLIENT & CONSTANTS
 client = genai.Client()
 MASTER_FILE = "master_medical_data.csv"
 
@@ -16,18 +16,18 @@ PROVIDER_PASSWORDS = {
     "Shih, Peter H": "0813",
     "Rustmann, Walter C": "6362",
     "Yuhico, Luke Simon OLIVERA": "6037",
-    "Korzhuk, Tolya": "6900",                     # Update if eCW formats him differently (e.g., Korzhuk, Anatoliy)
+    "Korzhuk, Tolya": "6900",                     # Update if eCW formats differently
     
     # Advanced Practice Providers (APRNs & PAs)
     "Richard, Helena S": "6626",
     "Tudlong, Marlon K": "6246",
     "Grimes, Brittany N": "4776",
     "Hinojosa, Eric D": "6809",
-    "Singh, Poorita M": "0000",                   # Active in August report
+    "Singh, Poorita M": "0000",
     "Burton, Kevin": "0000",                      # Effective 1/1/2027
 }
 
-def clean_and_parse_report(uploaded_file):
+def clean_and_parse_report(uploaded_file, batch_label):
     """Parses specific nested, grouped CPT Level report format (CSV or Excel)"""
     if uploaded_file.name.endswith(('.xlsx', '.xls')):
         df = pd.read_excel(uploaded_file, skiprows=5)
@@ -50,7 +50,8 @@ def clean_and_parse_report(uploaded_file):
             df[col] = df[col].astype(str).str.replace('$', '', regex=False).str.replace(',', '', regex=False).str.strip()
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
             
-    df['Upload Month'] = pd.Timestamp.now().strftime('%B %Y')
+    # Tag rows with the custom reporting period chosen by user
+    df['Upload Month'] = batch_label.strip() if batch_label.strip() else pd.Timestamp.now().strftime('%B %Y')
     return df
 
 # Data Load
@@ -82,21 +83,28 @@ with st.sidebar:
 # Ensure master database exists
 if master_df.empty:
     st.title("🩺 American Medical Group Practice Analytics")
-    st.info("Welcome! Your secure runtime database is currently blank. Please use the sidebar to upload a spreadsheet report.")
+    st.info("Welcome! Your runtime database is currently blank. Please upload your reports using the sidebar.")
     with st.sidebar:
         st.header("📥 Data Management")
         uploaded_file = st.file_uploader("Upload Monthly CPT Analysis Report (CSV or Excel)", type=["csv", "xlsx", "xls"])
+        batch_label = st.text_input("Reporting Period / Batch Label:", value="May-July 2026", help="e.g., 'May-July 2026', 'August 2026'")
+        
         if uploaded_file is not None and st.button("Process & Save Analytics"):
-            new_data = clean_and_parse_report(uploaded_file)
+            new_data = clean_and_parse_report(uploaded_file, batch_label)
             master_df = new_data
             master_df.to_csv(MASTER_FILE, index=False)
-            st.success("Successfully processed database!")
+            st.success(f"Successfully processed and tagged as '{batch_label}'!")
             st.rerun()
     st.stop()
 
-# List available unique providers & upload months
+# Helper to get unique upload batches while preserving order of appearance
+def get_ordered_batches(df):
+    if 'Upload Month' not in df.columns:
+        return []
+    return list(dict.fromkeys(df['Upload Month'].dropna().tolist()))
+
 all_providers = sorted(master_df['Appointment / Servicing Provider'].dropna().unique().tolist())
-all_months = sorted(master_df['Upload Month'].dropna().unique().tolist()) if 'Upload Month' in master_df.columns else []
+all_batches = get_ordered_batches(master_df)
 
 # ==========================================
 # 1. PROVIDER PERSONAL DASHBOARD
@@ -114,7 +122,7 @@ if portal_mode == "👨‍⚕️ Provider Personal Dashboard":
         st.info("Please select your provider profile from the sidebar to continue.")
         st.stop()
         
-    # Permission verification (accepts assigned PIN or the Admin master password)
+    # Permission verification
     expected_pin = PROVIDER_PASSWORDS.get(selected_provider, "0000")
     if provider_pin != expected_pin and provider_pin != ADMIN_PASSWORD:
         st.warning("🔒 Please enter a valid PIN in the sidebar to access your performance data.")
@@ -122,19 +130,21 @@ if portal_mode == "👨‍⚕️ Provider Personal Dashboard":
 
     # Isolated Provider Dataframe
     prov_df = master_df[master_df['Appointment / Servicing Provider'] == selected_provider].copy()
-    
-    # Month Filter
-    available_prov_months = sorted(prov_df['Upload Month'].dropna().unique().tolist()) if 'Upload Month' in prov_df.columns else []
+    available_prov_batches = get_ordered_batches(prov_df)
     
     col_filter1, col_filter2 = st.columns([2, 2])
     with col_filter1:
-        chosen_month = st.selectbox("Select Reporting Month for Detail:", available_prov_months, index=len(available_prov_months)-1 if available_prov_months else 0)
+        chosen_batch = st.selectbox(
+            "Select Reporting Period for Detail:", 
+            available_prov_batches, 
+            index=len(available_prov_batches)-1 if available_prov_batches else 0
+        )
 
-    # Calculate YTD & Monthly Totals
-    month_data = prov_df[prov_df['Upload Month'] == chosen_month] if available_prov_months else prov_df
+    # Calculate Period & Cumulative Totals
+    batch_data = prov_df[prov_df['Upload Month'] == chosen_batch] if available_prov_batches else prov_df
     
-    m_billed = float(month_data['Billed Charge'].sum())
-    m_paid = float(month_data['Payment'].sum())
+    m_billed = float(batch_data['Billed Charge'].sum())
+    m_paid = float(batch_data['Payment'].sum())
     m_rate = (m_paid / m_billed * 100) if m_billed > 0 else 0
     
     ytd_billed = float(prov_df['Billed Charge'].sum())
@@ -144,9 +154,9 @@ if portal_mode == "👨‍⚕️ Provider Personal Dashboard":
     # KPI Grid
     st.subheader(f"📊 Summary Metrics for {selected_provider}")
     k1, k2, k3 = st.columns(3)
-    k1.metric(f"{chosen_month} Billed", f"${m_billed:,.2f}")
-    k2.metric(f"{chosen_month} Collected", f"${m_paid:,.2f}")
-    k3.metric(f"{chosen_month} Collection Rate", f"{m_rate:.1f}%")
+    k1.metric(f"{chosen_batch} Billed", f"${m_billed:,.2f}")
+    k2.metric(f"{chosen_batch} Collected", f"${m_paid:,.2f}")
+    k3.metric(f"{chosen_batch} Collection Rate", f"{m_rate:.1f}%")
     
     y1, y2, y3 = st.columns(3)
     y1.metric("Cumulative/YTD Billed", f"${ytd_billed:,.2f}")
@@ -155,20 +165,20 @@ if portal_mode == "👨‍⚕️ Provider Personal Dashboard":
     
     st.divider()
     
-    # Month-over-Month Trend Chart
-    st.subheader("📈 Month-over-Month Financial Trends")
-    if 'Upload Month' in prov_df.columns and len(available_prov_months) > 1:
-        trend_df = prov_df.groupby('Upload Month')[['Billed Charge', 'Payment']].sum()
+    # Trend Chart Across Upload Periods
+    st.subheader("📈 Performance Trends by Reporting Period")
+    if len(available_prov_batches) > 1:
+        trend_df = prov_df.groupby('Upload Month', sort=False)[['Billed Charge', 'Payment']].sum()
         st.bar_chart(trend_df)
     else:
-        st.caption("Month-over-month trend will expand automatically as successive monthly reports are uploaded.")
+        st.caption("Trends across reporting periods will display here as additional batches are uploaded.")
 
     st.divider()
     
-    # Top 10 CPT Codes
-    st.subheader(f"🏆 Top 10 Procedures by Dollars ({chosen_month})")
+    # Top 10 CPT Codes for Selected Period
+    st.subheader(f"🏆 Top 10 Procedures by Dollars ({chosen_batch})")
     top_cpts = (
-        month_data.groupby('CPT Code')[['Units', 'Billed Charge', 'Payment']]
+        batch_data.groupby('CPT Code')[['Units', 'Billed Charge', 'Payment']]
         .sum()
         .sort_values(by='Payment', ascending=False)
         .head(10)
@@ -184,13 +194,13 @@ if portal_mode == "👨‍⚕️ Provider Personal Dashboard":
 
     st.divider()
     
-    # Service Line Breakdown
-    st.subheader("🔬 Clinical Service Breakdown")
+    # Service Line Breakdown for Selected Period
+    st.subheader(f"🔬 Clinical Service Breakdown ({chosen_batch})")
     s_col1, s_col2, s_col3 = st.columns(3)
     
-    icu_prov = month_data[month_data['CPT Code'].isin(bedside_procedure_codes)]
-    bronch_prov = month_data[month_data['CPT Code'].isin(bronch_codes)]
-    outpatient_prov = month_data[month_data['CPT Code'].isin(outpatient_codes)]
+    icu_prov = batch_data[batch_data['CPT Code'].isin(bedside_procedure_codes)]
+    bronch_prov = batch_data[batch_data['CPT Code'].isin(bronch_codes)]
+    outpatient_prov = batch_data[batch_data['CPT Code'].isin(outpatient_codes)]
     
     s_col1.metric("ICU Bedside Proc Collections", f"${icu_prov['Payment'].sum():,.2f}", f"{int(icu_prov['Units'].sum())} units")
     s_col2.metric("Bronchoscopy Collections", f"${bronch_prov['Payment'].sum():,.2f}", f"{int(bronch_prov['Units'].sum())} units")
@@ -212,12 +222,13 @@ else:
             
         st.header("📥 Data Management")
         uploaded_file = st.file_uploader("Upload Monthly CPT Analysis Report (CSV or Excel)", type=["csv", "xlsx", "xls"])
+        batch_label = st.text_input("Reporting Period / Batch Label:", value="August 2026", help="Specify label, e.g. 'May-July 2026', 'August 2026'")
         
         if uploaded_file is not None and st.button("Process & Save Analytics"):
-            new_data = clean_and_parse_report(uploaded_file)
+            new_data = clean_and_parse_report(uploaded_file, batch_label)
             master_df = pd.concat([master_df, new_data], ignore_index=True)
             master_df.to_csv(MASTER_FILE, index=False)
-            st.success("Successfully processed database!")
+            st.success(f"Successfully processed and tagged as '{batch_label}'!")
             st.rerun()
             
         if st.button("Clear Practice Database"):
