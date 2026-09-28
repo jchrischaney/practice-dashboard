@@ -3,22 +3,37 @@ import pandas as pd
 import os
 import google.genai as genai
 
-# 1. INITIALIZE GEMINI CLIENT
+# 1. INITIALIZE GEMINI CLIENT & FILE CONSTANTS
 client = genai.Client()
 MASTER_FILE = "master_medical_data.csv"
 
 # Configuration for Provider Security Access
-# (You can customize these passwords/PINs or move them into st.secrets)
 ADMIN_PASSWORD = "AdminSecure2026!"
+
 PROVIDER_PASSWORDS = {
-    # Replace these names with exact strings as they appear in 'Appointment / Servicing Provider'
-    # "Provider Exact Name": "PersonalPIN"
-    "DEFAULT_PROVIDER": "1234"
+    # Physicians
+    "Chaney, John C": "8138",
+    "Shih, Peter H": "0813",
+    "Rustmann, Walter C": "6362",
+    "Yuhico, Luke Simon OLIVERA": "6037",
+    "Korzhuk, Tolya": "6900",                     # Update if eCW formats him differently (e.g., Korzhuk, Anatoliy)
+    
+    # Advanced Practice Providers (APRNs & PAs)
+    "Richard, Helena S": "6626",
+    "Tudlong, Marlon K": "6246",
+    "Grimes, Brittany N": "4776",
+    "Hinojosa, Eric D": "6809",
+    "Singh, Poorita M": "0000",                   # Active in August report
+    "Burton, Kevin": "0000",                      # Effective 1/1/2027
 }
 
 def clean_and_parse_report(uploaded_file):
-    """Parses specific nested, grouped CPT Level CSV report format"""
-    df = pd.read_csv(uploaded_file, skiprows=5)
+    """Parses specific nested, grouped CPT Level report format (CSV or Excel)"""
+    if uploaded_file.name.endswith(('.xlsx', '.xls')):
+        df = pd.read_excel(uploaded_file, skiprows=5)
+    else:
+        df = pd.read_csv(uploaded_file, skiprows=5)
+        
     df.columns = df.columns.str.strip()
     
     df = df[df['CPT Code'].notna()]
@@ -67,10 +82,10 @@ with st.sidebar:
 # Ensure master database exists
 if master_df.empty:
     st.title("🩺 American Medical Group Practice Analytics")
-    st.info("Welcome! Your secure runtime database is currently blank. Please use the sidebar in Executive Overview to upload a spreadsheet report.")
+    st.info("Welcome! Your secure runtime database is currently blank. Please use the sidebar to upload a spreadsheet report.")
     with st.sidebar:
         st.header("📥 Data Management")
-        uploaded_file = st.file_uploader("Upload Monthly CPT Analysis Report (CSV)", type=["csv"])
+        uploaded_file = st.file_uploader("Upload Monthly CPT Analysis Report (CSV or Excel)", type=["csv", "xlsx", "xls"])
         if uploaded_file is not None and st.button("Process & Save Analytics"):
             new_data = clean_and_parse_report(uploaded_file)
             master_df = new_data
@@ -79,7 +94,7 @@ if master_df.empty:
             st.rerun()
     st.stop()
 
-# List available unique providers
+# List available unique providers & upload months
 all_providers = sorted(master_df['Appointment / Servicing Provider'].dropna().unique().tolist())
 all_months = sorted(master_df['Upload Month'].dropna().unique().tolist()) if 'Upload Month' in master_df.columns else []
 
@@ -96,10 +111,10 @@ if portal_mode == "👨‍⚕️ Provider Personal Dashboard":
         provider_pin = st.text_input("Enter Your Secure PIN:", type="password")
         
     if selected_provider == "-- Select --":
-        st.info("Please select your provider profile from the sidebar.")
+        st.info("Please select your provider profile from the sidebar to continue.")
         st.stop()
         
-    # Permission verification
+    # Permission verification (accepts assigned PIN or the Admin master password)
     expected_pin = PROVIDER_PASSWORDS.get(selected_provider, "0000")
     if provider_pin != expected_pin and provider_pin != ADMIN_PASSWORD:
         st.warning("🔒 Please enter a valid PIN in the sidebar to access your performance data.")
@@ -146,7 +161,7 @@ if portal_mode == "👨‍⚕️ Provider Personal Dashboard":
         trend_df = prov_df.groupby('Upload Month')[['Billed Charge', 'Payment']].sum()
         st.bar_chart(trend_df)
     else:
-        st.caption("Month-over-month trend will expand as successive monthly reports are uploaded.")
+        st.caption("Month-over-month trend will expand automatically as successive monthly reports are uploaded.")
 
     st.divider()
     
@@ -196,7 +211,7 @@ else:
             st.stop()
             
         st.header("📥 Data Management")
-        uploaded_file = st.file_uploader("Upload Monthly CPT Analysis Report (CSV)", type=["csv"])
+        uploaded_file = st.file_uploader("Upload Monthly CPT Analysis Report (CSV or Excel)", type=["csv", "xlsx", "xls"])
         
         if uploaded_file is not None and st.button("Process & Save Analytics"):
             new_data = clean_and_parse_report(uploaded_file)
@@ -215,11 +230,31 @@ else:
         st.markdown("**📁 Export Options**")
         csv_data = master_df.to_csv(index=False).encode('utf-8')
         st.download_button(
-            label="📥 Download Master CSV",
+            label="📥 Download Master CSV for Google Sheets",
             data=csv_data,
             file_name="Master_Practice_Analytics.csv",
             mime="text/csv",
         )
+        
+        with st.expander("📋 CPT Code Quick-Reference Cheat Sheet", expanded=False):
+            st.markdown(
+                "**E&M - CRITICAL CARE**\n"
+                "* **99291** : Critical Care (30–74 min)\n"
+                "* **99292** : Critical Care (Addl 30 min)\n\n"
+                "**E&M - CLINIC VISITS**\n"
+                "* **99202-99205** : New Patient Clinic\n"
+                "* **99212-99215** : Established Patient Clinic\n\n"
+                "**BEDSIDE ICU PROCEDURES**\n"
+                "* **36556** : Central Venous Catheter\n"
+                "* **76937** : US Guidance Vascular Access\n"
+                "* **31500** : Endotracheal Intubation\n"
+                "* **36620** : Arterial Line Placement\n"
+                "* **32551** : Chest Tube Insertion\n\n"
+                "**BRONCHOSCOPY**\n"
+                "* **31623, 31624, 31628, 31641, 31653, 31654**\n\n"
+                "**DIAGNOSTICS & PFT LAB**\n"
+                "* **94010-94799** : Complete Pulmonary Function Panel"
+            )
 
     # Practice Dashboard View
     total_billed = float(master_df['Billed Charge'].sum())
